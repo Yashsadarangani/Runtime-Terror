@@ -7,7 +7,8 @@ from google.cloud.aiplatform.generative_models import GenerativeModel
 # The location for Gemini models is us-central1
 LOCATION = "us-central1"
 # The name of the model you want to use
-MODEL = "gemini-2.5-flash" # Using gemini-1.0-pro as it's a stable choice. You can change back to gemini-1.5-flash if you prefer.
+MODEL =  "models/gemini-1.5-flash"  # ✅ Valid for us-central1
+" # Using gemini-1.0-pro as it's a stable choice. You can change back to gemini-1.5-flash if you prefer.
 
 aiplatform.init(location=LOCATION)
 
