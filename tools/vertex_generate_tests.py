@@ -2,18 +2,14 @@ import os
 import argparse
 from google.cloud import aiplatform
 # 1. Import the correct class for generative models
-from google.cloud.aiplatform.generative_models import GenerativeModel
-
-# The location for Gemini models is us-central1
+PROJECT_ID = "runtime-terror-473009"
 LOCATION = "us-central1"
-# The name of the model you want to use
-MODEL =  "models/gemini-1.5-flash"  # ✅ Valid for us-central1
-" # Using gemini-1.0-pro as it's a stable choice. You can change back to gemini-1.5-flash if you prefer.
+MODEL = "projects/runtime-terror-473009/locations/us-central1/models/1234567890123456789"
 
-aiplatform.init(location=LOCATION)
+aiplatform.init(project=PROJECT_ID, location=LOCATION)
 
-# 2. Instantiate the GenerativeModel class
-model = GenerativeModel(MODEL)
+model = aiplatform.Model(model_name=MODEL)
+
 
 def generate_tests(source_code: str, class_name: str, out_dir: str):
     prompt = f"""
