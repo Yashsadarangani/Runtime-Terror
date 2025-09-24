@@ -13,7 +13,7 @@ steps:
       python -m venv /workspace/venv
       source /workspace/venv/bin/activate
       python -m pip install --upgrade pip
-      pip install google-cloud-aiplatform==1.29.0
+      pip install google-cloud-aiplatform
       pip install pygithub
 
 # 2) Activate the venv and run the test generation script
