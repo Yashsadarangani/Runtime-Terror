@@ -20,6 +20,8 @@ steps:
 - name: 'python:3.11'
   id: 'generate-tests'
   entrypoint: 'bash'
+  env:
+    - 'GOOGLE_CLOUD_PROJECT=runtime-terror-473009'
   args:
     - '-c'
     - |
