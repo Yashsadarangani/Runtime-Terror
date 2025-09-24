@@ -1,5 +1,6 @@
 substitutions:
   _REPORT_DIR: 'target/site/jacoco'
+  _REPORTS_BUCKET_BASE: 'gs://runtime-terror-code/reports'
 
 steps:
 # 1) Set up python env and install Vertex AI SDK
@@ -36,8 +37,8 @@ steps:
   args:
     - '-c'
     - |
-      BUCKET=gs://runtime-terror-code/reports/${SHORT_SHA}
-      gsutil -m cp -r ${_REPORT_DIR} $BUCKET/
+      BUCKET=${_REPORTS_BUCKET_BASE}/${SHORT_SHA}
+      gsutil -m cp -r ${_REPORT_DIR} $$BUCKET/
 
 # 5) Enforce coverage gate (example: require minimum 40%)
 - name: 'python:3.11'
@@ -55,6 +56,5 @@ artifacts:
     location: 'gs://runtime-terror-code/build-artifacts/${SHORT_SHA}/'
     paths: ['target/','src/test/']
 
-# This option is still required from the previous error
 options:
   logging: CLOUD_LOGGING_ONLY
