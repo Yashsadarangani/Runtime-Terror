@@ -1,22 +1,31 @@
+substitutions:
+  _REPORT_DIR: 'target/site/jacoco'
+  _REPORTS_BUCKET_BASE: 'gs://runtime-terror-code/reports'
+
 steps:
-# 1) Set up python env and install Vertex AI SDK
+# 1) Create a virtual environment in /workspace and install dependencies into it
 - name: 'python:3.11'
   id: 'install-deps'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
+      python -m venv /workspace/venv
+      source /workspace/venv/bin/activate
       python -m pip install --upgrade pip
       pip install google-cloud-aiplatform
       pip install pygithub
 
-# 2) Use Vertex AI to generate test cases for backend classes
+# 2) Activate the venv and run the test generation script
 - name: 'python:3.11'
   id: 'generate-tests'
   entrypoint: 'bash'
+  env:
+    - 'GOOGLE_CLOUD_PROJECT=runtime-terror-473009'
   args:
     - '-c'
     - |
+      source /workspace/venv/bin/activate
       python tools/vertex_generate_tests.py \
         --source_dir=src/main/java/backend \
         --out_dir=src/test/java/backend_tests
@@ -33,24 +42,25 @@ steps:
   args:
     - '-c'
     - |
-      REPORT_DIR=target/site/jacoco
-      BUCKET=gs://runtime-terror-code/reports/${SHORT_SHA}
-      mkdir -p /workspace/reports
-      cp -r ${REPORT_DIR} /workspace/reports || true
-      gsutil -m cp -r /workspace/reports/* $BUCKET/
+      BUCKET=${_REPORTS_BUCKET_BASE}/${SHORT_SHA}
+      gsutil -m cp -r ${_REPORT_DIR} $$BUCKET/
 
-# 5) Enforce coverage gate (example: require minimum 40%)
+# 5) Activate the venv and run the coverage check script
 - name: 'python:3.11'
   id: 'check-coverage'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
-      python tools/check_coverage.py target/site/jacoco/jacoco.xml 0.40 || { echo "Coverage gate failed"; exit 1; }
+      source /workspace/venv/bin/activate
+      python tools/check_coverage.py ${_REPORT_DIR}/jacoco.xml 0.40 || { echo "Coverage gate failed"; exit 1; }
 
 timeout: '1200s'
 
 artifacts:
   objects:
-    location: 'gs://your-gcs-bucket-name/build-artifacts/${SHORT_SHA}/'
+    location: 'gs://runtime-terror-code/build-artifacts/${SHORT_SHA}/'
     paths: ['target/','src/test/']
+
+options:
+  logging: CLOUD_LOGGING_ONLY
