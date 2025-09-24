@@ -124,10 +124,12 @@ timeout: '1800s'
 
 artifacts:
   objects:
-    location: '${_REPORTS_BUCKET_BASE}/build-artifacts/${SHORT_SHA}/'
+    location: 'gs://runtime-terror-code/build-artifacts/${SHORT_SHA}/'
     paths: 
       - 'backend/target/**'
       - 'backend/src/test/java/**'
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 10
