@@ -26,6 +26,8 @@ steps:
   id: 'run-tests'
   args: ['-B', 'clean', 'test', 'jacoco:report']
 
+  
+
 # 4) Upload Jacoco reports to GCS
 - name: 'gcr.io/cloud-builders/gsutil'
   id: 'upload-artifacts'
@@ -54,3 +56,6 @@ artifacts:
   objects:
     location: 'gs://runtime-terror-code/build-artifacts/${SHORT_SHA}/'
     paths: ['target/','src/test/']
+
+options:
+  logging: CLOUD_LOGGING_ONLY
