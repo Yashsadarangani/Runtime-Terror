@@ -52,5 +52,5 @@ timeout: '1200s'
 
 artifacts:
   objects:
-    location: 'gs://your-gcs-bucket-name/build-artifacts/${SHORT_SHA}/'
+    location: 'gs://runtime-terror-code/build-artifacts/${SHORT_SHA}/'
     paths: ['target/','src/test/']
