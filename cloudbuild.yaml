@@ -4,7 +4,8 @@ substitutions:
 
 steps:
 # 1) Set up python env and install Vertex AI SDK
-- name: 'python:3.11'
+# Use Google's provided python image
+- name: 'gcr.io/cloud-builders/python'
   id: 'install-deps'
   entrypoint: 'bash'
   args:
@@ -15,7 +16,8 @@ steps:
       pip install pygithub
 
 # 2) Use Vertex AI to generate test cases for backend classes
-- name: 'python:3.11'
+# Use Google's provided python image
+- name: 'gcr.io/cloud-builders/python'
   id: 'generate-tests'
   entrypoint: 'bash'
   args:
@@ -41,7 +43,8 @@ steps:
       gsutil -m cp -r ${_REPORT_DIR} $$BUCKET/
 
 # 5) Enforce coverage gate (example: require minimum 40%)
-- name: 'python:3.11'
+# Use Google's provided python image
+- name: 'gcr.io/cloud-builders/python'
   id: 'check-coverage'
   entrypoint: 'bash'
   args:
