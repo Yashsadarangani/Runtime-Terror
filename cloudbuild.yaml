@@ -112,7 +112,7 @@ steps:
       echo "Project ID: ${_PROJECT_ID}"
       echo "Build ID: $BUILD_ID"
       echo "Commit SHA: $SHORT_SHA"
-      echo "Reports uploaded to: ${_REPORTS_BUCKET_BASE}/${SHORT_SHA}_$(date +%Y%m%d_%H%M%S)"
+      echo "Reports uploaded to: ${_REPORTS_BUCKET_BASE}/${SHORT_SHA}"
       
       # Count generated test files
       if [ -d "backend/src/test/java" ]; then
