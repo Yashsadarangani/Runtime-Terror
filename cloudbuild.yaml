@@ -7,7 +7,7 @@ steps:
     - '-c'
     - |
       python -m pip install --upgrade pip
-      pip install google-cloud-aiplatform==1.29.0  # Vertex AI SDK
+      pip install google-cloud-aiplatform
       pip install pygithub
 
 # 2) Use Vertex AI to generate test cases for backend classes
