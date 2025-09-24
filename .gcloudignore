@@ -1,0 +1,45 @@
+# Ignore common development files
+.git/
+.gitignore
+*.md
+!README.md
+
+# Ignore frontend files (not needed for backend testing)
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore logs
+*.log
+logs/
+
+# Ignore backup files
+*.bak
+*.tmp
+*.swp
+
+# Ignore compiled files
+*.class
+target/
+build/
+
+# Ignore package files
+*.jar
+*.war
+*.ear
+
+# Keep essential files for build
+!backend/**
+!tools/**
+!cloudbuild.yaml
