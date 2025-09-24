@@ -32,7 +32,7 @@ steps:
     - '-c'
     - |
       REPORT_DIR=target/site/jacoco
-      BUCKET=gs://your-gcs-bucket-name/reports/${SHORT_SHA}
+      BUCKET=gs://runtime-terror-code/reports/${SHORT_SHA}
       mkdir -p /workspace/reports
       cp -r ${REPORT_DIR} /workspace/reports || true
       gsutil -m cp -r /workspace/reports/* $BUCKET/
