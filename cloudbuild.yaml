@@ -1,5 +1,5 @@
 steps:
-# 1) Set up python env and install Vertex AI SDK (runs in official python image)
+# 1) Set up python env and install Vertex AI SDK
 - name: 'python:3.11'
   id: 'install-deps'
   entrypoint: 'bash'
@@ -7,42 +7,26 @@ steps:
     - '-c'
     - |
       python -m pip install --upgrade pip
-      pip install google-cloud-aiplatform==1.29.0  # adjust as needed
+      pip install google-cloud-aiplatform==1.29.0  # Vertex AI SDK
       pip install pygithub
 
-# 2) Call Python script that uses Vertex AI to generate tests into workspace
+# 2) Use Vertex AI to generate test cases for backend classes
 - name: 'python:3.11'
   id: 'generate-tests'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
-      python tools/vertex_generate_tests.py --repo_dir=. --out_dir=src/test/java --priority_file=baseline.json
+      python tools/vertex_generate_tests.py \
+        --source_dir=src/main/java/backend \
+        --out_dir=src/test/java/backend_tests
 
-# 3) Download and run Randoop to generate additional test cases
-- name: 'maven:3.9.4-eclipse-temurin-17'
-  id: 'randoop-generate'
-  entrypoint: 'bash'
-  args:
-    - '-c'
-    - |
-      curl -L -o randoop.jar https://github.com/randoop/randoop/releases/download/v4.3.3/randoop-all-4.3.3.jar
-      mkdir -p generated-tests
-      # Example: change to your real class under test
-      java -classpath randoop.jar randoop.main.Main gentests \
-        --testclass=com.example.YourMainClass \
-        --time-limit=60 \
-        --junit-output-dir=generated-tests
-      # Copy generated tests into src/test/java
-      mkdir -p src/test/java
-      cp -r generated-tests/* src/test/java/ || true
-
-# 4) Run Maven tests (and generate jacoco)
+# 3) Run Maven tests and generate Jacoco report
 - name: 'gcr.io/cloud-builders/mvn'
   id: 'run-tests'
   args: ['-B', 'clean', 'test', 'jacoco:report']
 
-# 5) Upload reports to GCS
+# 4) Upload Jacoco reports to GCS
 - name: 'gcr.io/cloud-builders/gsutil'
   id: 'upload-artifacts'
   entrypoint: 'bash'
@@ -55,7 +39,7 @@ steps:
       cp -r ${REPORT_DIR} /workspace/reports || true
       gsutil -m cp -r /workspace/reports/* $BUCKET/
 
-# 6) Enforce coverage gate (example: require minimum 40%)
+# 5) Enforce coverage gate (example: require minimum 40%)
 - name: 'python:3.11'
   id: 'check-coverage'
   entrypoint: 'bash'
