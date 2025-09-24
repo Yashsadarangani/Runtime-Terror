@@ -1,3 +1,6 @@
+substitutions:
+  _REPORT_DIR: 'target/site/jacoco'
+
 steps:
 # 1) Set up python env and install Vertex AI SDK
 - name: 'python:3.11'
@@ -33,11 +36,8 @@ steps:
   args:
     - '-c'
     - |
-      REPORT_DIR=target/site/jacoco
       BUCKET=gs://runtime-terror-code/reports/${SHORT_SHA}
-      mkdir -p /workspace/reports
-      cp -r ${REPORT_DIR} /workspace/reports || true
-      gsutil -m cp -r /workspace/reports/* $BUCKET/
+      gsutil -m cp -r ${_REPORT_DIR} $BUCKET/
 
 # 5) Enforce coverage gate (example: require minimum 40%)
 - name: 'python:3.11'
@@ -46,13 +46,15 @@ steps:
   args:
     - '-c'
     - |
-      python tools/check_coverage.py target/site/jacoco/jacoco.xml 0.40 || { echo "Coverage gate failed"; exit 1; }
+      python tools/check_coverage.py ${_REPORT_DIR}/jacoco.xml 0.40 || { echo "Coverage gate failed"; exit 1; }
 
 timeout: '1200s'
-
-logs_bucket: 'gs://runtime-terror-code'
 
 artifacts:
   objects:
     location: 'gs://runtime-terror-code/build-artifacts/${SHORT_SHA}/'
     paths: ['target/','src/test/']
+
+# This option is still required from the previous error
+options:
+  logging: CLOUD_LOGGING_ONLY
