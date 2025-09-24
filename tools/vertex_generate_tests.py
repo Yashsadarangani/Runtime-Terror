@@ -52,8 +52,13 @@ def extract_package_name(source_code):
 def generate_tests(access_token: str, project_id: str, source_code: str, class_name: str, package_name: str, out_dir: str, relative_path: str):
     """Generates tests by calling the Vertex AI REST API."""
     
-    # Try different model names in order of preference
-    models_to_try = ["gemini-pro", "gemini-1.5-flash", "text-bison", "text-bison@001"]
+    # Updated with current available models
+    models_to_try = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro", 
+        "gemini-2.0-flash-001",
+        "gemini-2.0-flash-lite-001"
+    ]
     
     for model_id in models_to_try:
         api_endpoint = (
@@ -62,10 +67,12 @@ def generate_tests(access_token: str, project_id: str, source_code: str, class_n
         )
         
         if try_generate_with_model(api_endpoint, access_token, source_code, class_name, package_name, out_dir):
+            print(f"✅ Successfully used model: {model_id}")
             return True
     
     print(f"❌ All models failed for {class_name}")
     return False
+
 
 def try_generate_with_model(api_endpoint: str, access_token: str, source_code: str, class_name: str, package_name: str, out_dir: str):
     """Try to generate tests using a specific model endpoint."""
@@ -94,7 +101,7 @@ Source code:
         "generationConfig": {
             "temperature": 0.2,
             "topP": 0.8,
-            "maxOutputTokens": 4096
+            "maxOutputTokens": 16024
         }
     }
 
@@ -106,8 +113,16 @@ Source code:
     try:
         response = requests.post(api_endpoint, headers=headers, json=request_body, timeout=180)
         
-        # If we get a 404, this model isn't available - try the next one
+        # Enhanced error handling
         if response.status_code == 404:
+            print(f"⚠️  Model not found or not accessible: {api_endpoint.split('/')[-1].split(':')[0]}")
+            return False
+        elif response.status_code == 403:
+            print(f"⚠️  Permission denied for model: {api_endpoint.split('/')[-1].split(':')[0]}")
+            return False
+        elif response.status_code == 429:
+            print(f"⚠️  Rate limit exceeded, waiting...")
+            time.sleep(5)  # Wait longer for rate limits
             return False
             
         response.raise_for_status()
@@ -115,6 +130,7 @@ Source code:
         response_json = response.json()
         
         if 'candidates' not in response_json or not response_json['candidates']:
+            print(f"⚠️  No candidates returned from model")
             return False
         
         test_code = response_json['candidates'][0]['content']['parts'][0]['text']
@@ -134,13 +150,17 @@ Source code:
         return True
         
     except requests.exceptions.RequestException as e:
-        if hasattr(e, 'response') and e.response and e.response.status_code == 404:
-            return False  # Model not available, try next one
-        print(f"❌ Error calling Vertex AI API for {class_name}: {e}")
+        if hasattr(e, 'response') and e.response:
+            if e.response.status_code == 404:
+                return False  # Model not available, try next one
+            print(f"❌ HTTP error {e.response.status_code} for {class_name}: {e.response.text}")
+        else:
+            print(f"❌ Network error for {class_name}: {e}")
         return False
     except Exception as e:
         print(f"❌ Unexpected error for {class_name}: {e}")
         return False
+
 
 def should_skip_file(file_path):
     """Check if file should be skipped for test generation."""
@@ -218,7 +238,7 @@ if __name__ == "__main__":
                         failed_generations += 1
                     
                     # Add a small delay to avoid rate limiting
-                    time.sleep(1)
+                    time.sleep(2)
                     
                 except Exception as e:
                     print(f"❌ Error processing {file}: {e}")
