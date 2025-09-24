@@ -3,7 +3,7 @@ substitutions:
   _REPORTS_BUCKET_BASE: 'gs://runtime-terror-code/reports'
 
 steps:
-# 1) Create a virtual environment in /workspace and install dependencies into it
+# 1) Create a venv and install the required HTTP and auth libraries
 - name: 'python:3.11'
   id: 'install-deps'
   entrypoint: 'bash'
@@ -13,7 +13,8 @@ steps:
       python -m venv /workspace/venv
       source /workspace/venv/bin/activate
       python -m pip install --upgrade pip
-      pip install google-cloud-aiplatform
+      # Install the necessary libraries for making authenticated HTTP requests
+      pip install requests google-auth
       pip install pygithub
 
 # 2) Activate the venv and run the test generation script
