@@ -1,0 +1,53 @@
+steps:
+# 1) Set up python env and install Vertex AI SDK (runs in official python image)
+- name: 'python:3.11'
+  id: 'install-deps'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      python -m pip install --upgrade pip
+      pip install google-cloud-aiplatform==1.29.0  # adjust as needed
+      pip install pygithub
+
+# 2) Call Python script that uses Vertex AI to generate tests into workspace
+- name: 'python:3.11'
+  id: 'generate-tests'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      python tools/vertex_generate_tests.py --repo_dir=. --out_dir=src/test/java --priority_file=baseline.json
+
+# 3) Run Maven tests (and generate jacoco)
+- name: 'gcr.io/cloud-builders/mvn'
+  id: 'run-tests'
+  args: ['-B', 'clean', 'test', 'jacoco:report']
+
+# 4) Upload reports to GCS
+- name: 'gcr.io/cloud-builders/gsutil'
+  id: 'upload-artifacts'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      REPORT_DIR=target/site/jacoco
+      BUCKET=gs://your-gcs-bucket-name/reports/${SHORT_SHA}
+      mkdir -p /workspace/reports
+      cp -r ${REPORT_DIR} /workspace/reports || true
+      gsutil -m cp -r /workspace/reports/* $BUCKET/
+
+# 5) Enforce coverage gate (example: require minimum 40%)
+- name: 'python:3.11'
+  id: 'check-coverage'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      python tools/check_coverage.py target/site/jacoco/jacoco.xml 0.40 || { echo "Coverage gate failed"; exit 1; }
+
+timeout: '1200s'
+artifacts:
+  objects:
+    location: 'gs://your-gcs-bucket-name/build-artifacts/${SHORT_SHA}/'
+    paths: ['target/*','src/test/*']
