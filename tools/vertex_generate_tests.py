@@ -4,7 +4,7 @@ from google.cloud import aiplatform
 
 PROJECT_ID = "runtime-terror-473009"
 LOCATION = "us-central1"
-MODEL = "text-bison"
+MODEL = "gemini-2.5-flash"
 
 aiplatform.init(project=PROJECT_ID, location=LOCATION)
 model = aiplatform.Model(model_name=MODEL)
