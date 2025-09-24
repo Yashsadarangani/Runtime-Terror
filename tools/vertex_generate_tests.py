@@ -1,14 +1,17 @@
 import os
 import argparse
 from google.cloud import aiplatform
+
+from vertexai.generative_models import GenerativeModel
+
+model = GenerativeModel("gemini-1.5-flash") 
 # 1. Import the correct class for generative models
 PROJECT_ID = "runtime-terror-473009"
 LOCATION = "us-central1"
-MODEL = "projects/runtime-terror-473009/locations/us-central1/models/1234567890123456789"
+
 
 aiplatform.init(project=PROJECT_ID, location=LOCATION)
 
-model = aiplatform.Model(model_name=MODEL)
 
 
 def generate_tests(source_code: str, class_name: str, out_dir: str):
