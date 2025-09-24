@@ -19,12 +19,30 @@ steps:
     - |
       python tools/vertex_generate_tests.py --repo_dir=. --out_dir=src/test/java --priority_file=baseline.json
 
-# 3) Run Maven tests (and generate jacoco)
+# 3) Download and run Randoop to generate additional test cases
+- name: 'maven:3.9.4-eclipse-temurin-17'
+  id: 'randoop-generate'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      curl -L -o randoop.jar https://github.com/randoop/randoop/releases/download/v4.3.3/randoop-all-4.3.3.jar
+      mkdir -p generated-tests
+      # Example: change to your real class under test
+      java -classpath randoop.jar randoop.main.Main gentests \
+        --testclass=com.example.YourMainClass \
+        --time-limit=60 \
+        --junit-output-dir=generated-tests
+      # Copy generated tests into src/test/java
+      mkdir -p src/test/java
+      cp -r generated-tests/* src/test/java/ || true
+
+# 4) Run Maven tests (and generate jacoco)
 - name: 'gcr.io/cloud-builders/mvn'
   id: 'run-tests'
   args: ['-B', 'clean', 'test', 'jacoco:report']
 
-# 4) Upload reports to GCS
+# 5) Upload reports to GCS
 - name: 'gcr.io/cloud-builders/gsutil'
   id: 'upload-artifacts'
   entrypoint: 'bash'
@@ -37,7 +55,7 @@ steps:
       cp -r ${REPORT_DIR} /workspace/reports || true
       gsutil -m cp -r /workspace/reports/* $BUCKET/
 
-# 5) Enforce coverage gate (example: require minimum 40%)
+# 6) Enforce coverage gate (example: require minimum 40%)
 - name: 'python:3.11'
   id: 'check-coverage'
   entrypoint: 'bash'
@@ -47,7 +65,8 @@ steps:
       python tools/check_coverage.py target/site/jacoco/jacoco.xml 0.40 || { echo "Coverage gate failed"; exit 1; }
 
 timeout: '1200s'
+
 artifacts:
   objects:
     location: 'gs://your-gcs-bucket-name/build-artifacts/${SHORT_SHA}/'
-    paths: ['target/*','src/test/*']
+    paths: ['target/','src/test/']
