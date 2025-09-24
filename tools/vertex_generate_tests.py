@@ -14,10 +14,14 @@ LOCATION = "us-central1"
 def get_access_token():
     """Gets the default access token to authenticate to the Google Cloud API."""
     try:
-        credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        credentials, project = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
         auth_request = google.auth.transport.requests.Request()
         credentials.refresh(auth_request)
-        return credentials.token, credentials.project_id
+        
+        # Get project ID from environment or credentials
+        project_id = project or os.environ.get('GOOGLE_CLOUD_PROJECT', 'runtime-terror-473009')
+        
+        return credentials.token, project_id
     except Exception as e:
         print(f"❌ Authentication failed: {e}")
         raise
