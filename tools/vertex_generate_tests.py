@@ -2,7 +2,7 @@ import os
 import argparse
 from google.cloud import aiplatform
 
-PROJECT_ID = "your-gcp-project"
+PROJECT_ID = "runtime-terror-973009"
 LOCATION = "us-central1"
 MODEL = "text-bison"
 
