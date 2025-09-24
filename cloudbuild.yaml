@@ -1,81 +1,50 @@
-substitutions:
-  _REPORT_DIR: 'backend/target/site/jacoco'
-  _REPORTS_BUCKET_BASE: 'gs://runtime-terror-code/reports'
-  _PROJECT_ID: 'runtime-terror-473009'
-
 steps:
-# 1) Install Python dependencies for test generation and coverage checking
+# 1) Install Python dependencies
 - name: 'python:3.11'
   id: 'install-deps'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
-      echo "📦 Installing Python dependencies..."
       python -m venv /workspace/venv
       source /workspace/venv/bin/activate
-      python -m pip install --upgrade pip
       pip install requests google-auth lxml
 
-# 2) Generate AI-powered tests for backend Java classes
+# 2) Generate AI tests
 - name: 'python:3.11'
   id: 'generate-tests'
   entrypoint: 'bash'
   env:
-    - 'GOOGLE_CLOUD_PROJECT=${_PROJECT_ID}'
+    - 'GOOGLE_CLOUD_PROJECT=runtime-terror-473009'
   args:
     - '-c'
     - |
       source /workspace/venv/bin/activate
-      echo "🤖 Generating AI-powered tests..."
       cd /workspace
       python tools/vertex_generate_tests.py \
         --source_dir=backend/src/main/java/com/github/yildizmy \
         --out_dir=backend/src/test/java
 
-# 3) Run Maven tests with Jacoco coverage in backend directory
+# 3) Run Maven tests
 - name: 'gcr.io/cloud-builders/mvn'
   id: 'run-tests'
   dir: 'backend'
   args: 
-    - '-B'
     - 'clean'
     - 'test'
     - 'jacoco:report'
-    - '-Dmaven.test.failure.ignore=true'
 
-# 4) Upload test results and coverage reports to GCS
+# 4) Upload reports to GCS
 - name: 'gcr.io/cloud-builders/gsutil'
   id: 'upload-reports'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
-      echo "📤 Uploading reports to GCS..."
-      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-      REPORTS_BUCKET="${_REPORTS_BUCKET_BASE}/${SHORT_SHA}_${TIMESTAMP}"
-      
-      # Upload Jacoco coverage reports
-      if [ -d "${_REPORT_DIR}" ]; then
-        gsutil -m cp -r ${_REPORT_DIR} ${REPORTS_BUCKET}/jacoco/
-        echo "✅ Uploaded Jacoco reports to: ${REPORTS_BUCKET}/jacoco/"
-      else
-        echo "⚠️  Jacoco reports directory not found: ${_REPORT_DIR}"
-      fi
-      
-      # Upload Maven surefire test reports
-      if [ -d "backend/target/surefire-reports" ]; then
-        gsutil -m cp -r backend/target/surefire-reports ${REPORTS_BUCKET}/surefire/
-        echo "✅ Uploaded Surefire reports to: ${REPORTS_BUCKET}/surefire/"
-      fi
-      
-      # Upload generated test files
-      if [ -d "backend/src/test/java" ]; then
-        gsutil -m cp -r backend/src/test/java ${REPORTS_BUCKET}/generated-tests/
-        echo "✅ Uploaded generated tests to: ${REPORTS_BUCKET}/generated-tests/"
-      fi
+      gsutil -m cp -r backend/target gs://runtime-terror-code/reports/$SHORT_SHA/
+      gsutil -m cp -r backend/src/test/java gs://runtime-terror-code/reports/$SHORT_SHA/tests/
 
-# 5) Check test coverage against quality gate
+# 5) Check coverage
 - name: 'python:3.11'
   id: 'check-coverage'
   entrypoint: 'bash'
@@ -83,42 +52,7 @@ steps:
     - '-c'
     - |
       source /workspace/venv/bin/activate
-      echo "📊 Checking code coverage..."
-      
-      JACOCO_XML="${_REPORT_DIR}/jacoco.xml"
-      if [ -f "$JACOCO_XML" ]; then
-        python tools/check_coverage.py "$JACOCO_XML" 0.40
-        COVERAGE_EXIT_CODE=$?
-        if [ $COVERAGE_EXIT_CODE -eq 0 ]; then
-          echo "✅ Coverage quality gate passed!"
-        else
-          echo "❌ Coverage quality gate failed!"
-          exit 1
-        fi
-      else
-        echo "⚠️  Jacoco XML report not found at: $JACOCO_XML"
-        echo "⚠️  Skipping coverage check"
-      fi
-
-# 6) Create build summary
-- name: 'gcr.io/cloud-builders/gcloud'
-  id: 'build-summary'
-  entrypoint: 'bash'
-  args:
-    - '-c'
-    - |
-      echo "📋 Build Summary"
-      echo "==============="
-      echo "Project ID: ${_PROJECT_ID}"
-      echo "Build ID: $BUILD_ID"
-      echo "Commit SHA: $SHORT_SHA"
-      echo "Reports uploaded to: ${_REPORTS_BUCKET_BASE}/${SHORT_SHA}"
-      
-      # Count generated test files
-      if [ -d "backend/src/test/java" ]; then
-        TEST_COUNT=$(find backend/src/test/java -name "*Test.java" | wc -l)
-        echo "Generated test files: $TEST_COUNT"
-      fi
+      python tools/check_coverage.py backend/target/site/jacoco/jacoco.xml 0.40
 
 timeout: '1800s'
 
