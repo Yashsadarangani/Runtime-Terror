@@ -1,26 +1,31 @@
 import os
 import argparse
 from google.cloud import aiplatform
+# 1. Import the correct class for generative models
+from google.cloud.aiplatform.generative_models import GenerativeModel
 
-PROJECT_ID = "runtime-terror-473009"
+# The location for Gemini models is us-central1
 LOCATION = "us-central1"
-MODEL = "gemini-2.5-flash"
+# The name of the model you want to use
+MODEL = "gemini-2.5-flash" # Using gemini-1.0-pro as it's a stable choice. You can change back to gemini-1.5-flash if you prefer.
 
-aiplatform.init(project="runtime-terror-473009", location="us-central1")
+aiplatform.init(location=LOCATION)
 
-model = aiplatform.Model(model_name=MODEL)
-
-
+# 2. Instantiate the GenerativeModel class
+model = GenerativeModel(MODEL)
 
 def generate_tests(source_code: str, class_name: str, out_dir: str):
     prompt = f"""
     You are an expert Java developer. Write JUnit 5 test cases 
-    with meaningful assertions and edge cases for this class:
+    with meaningful assertions and edge cases for this class. Provide only the pure Java code, without any introductory text, explanations, or markdown formatting.
 
     {source_code}
     """
-    response = model.predict(instances=[{"content": prompt}])
-    test_code = response.predictions[0]
+    # 3. Use the .generate_content() method
+    response = model.generate_content(prompt)
+
+    # 4. Access the generated code via the .text attribute
+    test_code = response.text
 
     os.makedirs(out_dir, exist_ok=True)
     test_file = os.path.join(out_dir, f"{class_name}Test.java")
@@ -29,7 +34,7 @@ def generate_tests(source_code: str, class_name: str, out_dir: str):
     print(f"✅ Generated: {test_file}")
 
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--source_dir",
