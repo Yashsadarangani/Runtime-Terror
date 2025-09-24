@@ -1,13 +1,13 @@
 import os
 import argparse
 from google.cloud import aiplatform
-
-PROJECT_ID = "runtime-terror-473009"
-LOCATION = "us-central1"
 MODEL = "text-bison"
 
-aiplatform.init(project=PROJECT_ID, location=LOCATION)
+aiplatform.init(project="runtime-terror-473009", location="us-central1")
+
 model = aiplatform.Model(model_name=MODEL)
+
+
 
 def generate_tests(source_code: str, class_name: str, out_dir: str):
     prompt = f"""
