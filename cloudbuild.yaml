@@ -3,26 +3,27 @@ substitutions:
   _REPORTS_BUCKET_BASE: 'gs://runtime-terror-code/reports'
 
 steps:
-# 1) Set up python env and install Vertex AI SDK
-# Reverted to the official, versioned python image
+# 1) Create a virtual environment in /workspace and install dependencies into it
 - name: 'python:3.11'
   id: 'install-deps'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
+      python -m venv /workspace/venv
+      source /workspace/venv/bin/activate
       python -m pip install --upgrade pip
-      pip install google-cloud-aiplatform==1.29.0  # Vertex AI SDK
+      pip install google-cloud-aiplatform==1.29.0
       pip install pygithub
 
-# 2) Use Vertex AI to generate test cases for backend classes
-# Reverted to the official, versioned python image
+# 2) Activate the venv and run the test generation script
 - name: 'python:3.11'
   id: 'generate-tests'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
+      source /workspace/venv/bin/activate
       python tools/vertex_generate_tests.py \
         --source_dir=src/main/java/backend \
         --out_dir=src/test/java/backend_tests
@@ -42,14 +43,14 @@ steps:
       BUCKET=${_REPORTS_BUCKET_BASE}/${SHORT_SHA}
       gsutil -m cp -r ${_REPORT_DIR} $$BUCKET/
 
-# 5) Enforce coverage gate (example: require minimum 40%)
-# Reverted to the official, versioned python image
+# 5) Activate the venv and run the coverage check script
 - name: 'python:3.11'
   id: 'check-coverage'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
+      source /workspace/venv/bin/activate
       python tools/check_coverage.py ${_REPORT_DIR}/jacoco.xml 0.40 || { echo "Coverage gate failed"; exit 1; }
 
 timeout: '1200s'
