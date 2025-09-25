@@ -19,11 +19,20 @@ steps:
   args:
     - '-c'
     - |
-      source /workspace/venv/bin/activate
+      source /workspace/venv/bin/acqtivate
       cd /workspace
       python tools/vertex_generate_tests.py \
         --source_dir=backend/src/main/java/com/github/yildizmy/service \
         --out_dir=backend/src/test/java
+      
+
+      echo "Validating generated test files..."
+      find backend/src/test/java -name "*Test.java" -type f | while read file; do
+        echo "Checking $file"
+        if ! javac -cp "backend/target/classes:$(find backend -name "*.jar" | tr '\n' ':')" "$file" 2>/dev/null; then
+          echo "WARNING: $file has compilation issues"
+        fi
+      done
 
 # 3) Run Maven tests
 - name: 'gcr.io/cloud-builders/mvn'

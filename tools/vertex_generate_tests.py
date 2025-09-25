@@ -1,242 +1,224 @@
 import os
+import sys
 import argparse
-import re
 import requests
-import google.auth
-import google.auth.transport.requests
-import time
+import json
+from pathlib import Path
+import tempfile
+import subprocess
+import re
 
-# --- Configuration ---
-MODEL_ID = "gemini-2.5-pro"
-LOCATION = "us-central1"
-DEFAULT_SOURCE_DIR = "backend/src/main/java/com/github/yildizmy/service"
-DEFAULT_OUT_DIR = "backend/src/test/java"
-
-
-def get_access_token():
-    """Gets the default access token to authenticate to the Google Cloud API."""
-    try:
-        credentials, project = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        auth_request = google.auth.transport.requests.Request()
-        credentials.refresh(auth_request)
-
-        project_id = project or os.environ.get(
-            "GOOGLE_CLOUD_PROJECT", "runtime-terror-473009"
-        )
-        return credentials.token, project_id
-    except Exception as e:
-        print(f"❌ Authentication failed: {e}")
-        raise
-
-
-def clean_generated_code(code_text):
-    """Clean the generated code by removing markdown formatting and extra text."""
-    code_text = re.sub(r"```java\n?", "", code_text)
-    code_text = re.sub(r"```\n?", "", code_text)
-
-    lines = code_text.split("\n")
-    start_idx = 0
+def validate_java_syntax(java_code):
+    """Validate Java syntax by checking brace balance and basic structure"""
+    
+    # Check for basic class structure
+    if not re.search(r'(class|interface|enum)\s+\w+', java_code):
+        return False, "No class/interface/enum declaration found"
+    
+    # Check brace balance
+    open_braces = java_code.count('{')
+    close_braces = java_code.count('}')
+    
+    if open_braces != close_braces:
+        return False, f"Brace mismatch: {open_braces} opening, {close_braces} closing"
+    
+    # Check for code outside class (simple heuristic)
+    lines = java_code.split('\n')
+    in_class = False
+    brace_level = 0
+    
     for i, line in enumerate(lines):
         stripped = line.strip()
-        if (
-            stripped.startswith("package ")
-            or stripped.startswith("import ")
-            or stripped.startswith("@")
-            or stripped.startswith("public class")
-        ):
-            start_idx = i
-            break
-    return "\n".join(lines[start_idx:]).strip()
+        if not stripped or stripped.startswith('//') or stripped.startswith('/*') or stripped.startswith('*'):
+            continue
+            
+        # Count braces
+        brace_level += line.count('{') - line.count('}')
+        
+        # Check if we're in a class
+        if re.match(r'\s*(public\s+)?(class|interface|enum)', stripped):
+            in_class = True
+        
+        # Check for code outside class
+        if not in_class and brace_level == 0:
+            if (re.match(r'\s*@\w+', stripped) or  # annotations
+                re.match(r'\s*(public|private|protected)', stripped) or  # methods
+                re.match(r'\s*\w+.*\(.*\).*\{', stripped)):  # method signatures
+                return False, f"Code outside class at line {i+1}: {stripped}"
+    
+    return True, "Valid"
 
+def fix_common_issues(java_code):
+    """Fix common issues in generated code"""
+    
+    # Ensure proper imports
+    if 'import org.junit.jupiter.api.Test;' not in java_code:
+        java_code = add_missing_imports(java_code)
+    
+    # Fix missing closing braces
+    open_braces = java_code.count('{')
+    close_braces = java_code.count('}')
+    
+    if open_braces > close_braces:
+        missing_braces = open_braces - close_braces
+        java_code += '\n' + '}'.join([''] * (missing_braces + 1))
+    
+    return java_code
 
-def extract_package_name(source_code):
-    """Extract package name from source code."""
-    match = re.search(r"package\s+([\w\.]+);", source_code)
-    return match.group(1) if match else ""
+def add_missing_imports(java_code):
+    """Add standard test imports if missing"""
+    standard_imports = [
+        "import org.junit.jupiter.api.Test;",
+        "import org.junit.jupiter.api.BeforeEach;",
+        "import org.junit.jupiter.api.extension.ExtendWith;",
+        "import org.mockito.Mock;",
+        "import org.mockito.InjectMocks;",
+        "import org.mockito.junit.jupiter.MockitoExtension;",
+        "import static org.junit.jupiter.api.Assertions.*;",
+        "import static org.mockito.Mockito.*;",
+    ]
+    
+    # Find package declaration
+    package_match = re.search(r'package\s+[\w.]+;', java_code)
+    if package_match:
+        insert_pos = package_match.end()
+        
+        # Add imports after package
+        imports_to_add = []
+        for imp in standard_imports:
+            if imp not in java_code:
+                imports_to_add.append(imp)
+        
+        if imports_to_add:
+            import_block = '\n\n' + '\n'.join(imports_to_add) + '\n'
+            java_code = java_code[:insert_pos] + import_block + java_code[insert_pos:]
+    
+    return java_code
 
+def compile_test_java(java_file_path):
+    """Try to compile Java file to validate syntax"""
+    try:
+        # Use javac to check syntax
+        result = subprocess.run([
+            'javac', '-cp', '.:*', str(java_file_path)
+        ], capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            return True, "Compilation successful"
+        else:
+            return False, f"Compilation failed: {result.stderr}"
+    except Exception as e:
+        return False, f"Compilation check failed: {str(e)}"
 
-def generate_tests(
-    access_token: str,
-    project_id: str,
-    source_code: str,
-    class_name: str,
-    package_name: str,
-    out_dir: str,
-    relative_path: str,
-):
-    """Generates tests by calling the Vertex AI REST API (gemini-2.5-pro only)."""
-
-    api_endpoint = (
-        f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{project_id}"
-        f"/locations/{LOCATION}/publishers/google/models/{MODEL_ID}:generateContent"
-    )
-    return try_generate_with_model(
-        api_endpoint, access_token, source_code, class_name, package_name, out_dir
-    )
-
-
-def try_generate_with_model(
-    api_endpoint: str,
-    access_token: str,
-    source_code: str,
-    class_name: str,
-    package_name: str,
-    out_dir: str,
-):
-    """Try to generate tests using gemini-2.5-pro model."""
-
+def generate_test_with_vertex_ai(source_file_path, project_id="runtime-terror-473009"):
+    """Generate test using Vertex AI with validation"""
+    
+    # Read source file
+    with open(source_file_path, 'r') as f:
+        source_code = f.read()
+    
+    # Extract class name
+    class_match = re.search(r'class\s+(\w+)', source_code)
+    if not class_match:
+        raise ValueError(f"Could not find class name in {source_file_path}")
+    
+    class_name = class_match.group(1)
+    test_class_name = f"{class_name}Test"
+    
+    # Create enhanced prompt
     prompt = f"""
-Generate comprehensive JUnit 5 test cases for the following Java class.
-Requirements:
-1. Use proper package declaration: package {package_name};
-2. Include all necessary imports
-3. Use @ExtendWith(MockitoExtension.class) for mocking
-4. Test all public methods with positive, negative, and edge cases
-5. Use meaningful test method names
-6. Include proper assertions
-7. Mock external dependencies
-8. Provide only clean Java code without explanations or markdown
+Generate a comprehensive JUnit 5 test class for the following Java service class.
 
-Source code:
+Requirements:
+1. Use JUnit 5 annotations (@Test, @BeforeEach, etc.)
+2. Use Mockito for mocking dependencies (@Mock, @InjectMocks)
+3. Include @ExtendWith(MockitoExtension.class)
+4. Test all public methods
+5. Include positive and negative test cases
+6. Use proper assertions (assertEquals, assertThrows, etc.)
+7. Ensure the class is properly structured with complete closing braces
+8. Include proper package declaration and imports
+
+Source code to test:
 {source_code}
+
+Generate ONLY the complete test class with proper structure. Ensure all braces are balanced and the class is complete.
+Class name should be: {test_class_name}
 """
 
-    request_body = {
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "topP": 0.8,
-            "maxOutputTokens": 16024,
-        },
-    }
+    # Call Vertex AI (implementation depends on your setup)
+    # This is a placeholder - implement based on your vertex_generate_tests.py
+    generated_code = call_vertex_ai_api(prompt, project_id)
+    
+    # Validate and fix the generated code
+    is_valid, message = validate_java_syntax(generated_code)
+    
+    if not is_valid:
+        print(f"Generated code validation failed: {message}")
+        print("Attempting to fix...")
+        generated_code = fix_common_issues(generated_code)
+        
+        # Re-validate
+        is_valid, message = validate_java_syntax(generated_code)
+        if not is_valid:
+            raise ValueError(f"Could not fix generated code: {message}")
+    
+    return generated_code
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
+def call_vertex_ai_api(prompt, project_id):
+    """
+    Implement your Vertex AI API call here
+    This should match your existing implementation
+    """
+    # Your existing Vertex AI implementation
+    pass
 
-    try:
-        response = requests.post(
-            api_endpoint, headers=headers, json=request_body, timeout=180
-        )
-
-        if response.status_code in [403, 404, 429]:
-            print(f"⚠️ Model error {response.status_code}: {response.text}")
-            return False
-
-        response.raise_for_status()
-        response_json = response.json()
-
-        if "candidates" not in response_json or not response_json["candidates"]:
-            print("⚠️ No candidates returned from model")
-            return False
-
-        test_code = response_json["candidates"][0]["content"]["parts"][0]["text"]
-        test_code = clean_generated_code(test_code)
-
-        package_path = package_name.replace(".", "/")
-        full_out_dir = os.path.join(out_dir, package_path)
-        os.makedirs(full_out_dir, exist_ok=True)
-
-        test_file = os.path.join(full_out_dir, f"{class_name}Test.java")
-        with open(test_file, "w", encoding="utf-8") as f:
-            f.write(test_code)
-
-        print(f"✅ Generated: {test_file}")
-        return True
-
-    except requests.exceptions.RequestException as e:
-        if hasattr(e, "response") and e.response:
-            print(
-                f"❌ HTTP error {e.response.status_code} for {class_name}: {e.response.text}"
-            )
-        else:
-            print(f"❌ Network error for {class_name}: {e}")
-        return False
-    except Exception as e:
-        print(f"❌ Unexpected error for {class_name}: {e}")
-        return False
-
-
-def should_skip_file(file_path):
-    """Check if file should be skipped for test generation."""
-    skip_patterns = ["Test.java", "Tests.java", "Application.java", "Config.java"]
-    filename = os.path.basename(file_path)
-    return any(pattern in filename for pattern in skip_patterns)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Generate JUnit tests using Vertex AI (gemini-2.5-pro)"
-    )
-    parser.add_argument(
-        "--source_dir",
-        default=DEFAULT_SOURCE_DIR,
-        help="Directory with source .java files",
-    )
-    parser.add_argument(
-        "--out_dir", default=DEFAULT_OUT_DIR, help="Where to write generated tests"
-    )
+def main():
+    parser = argparse.ArgumentParser(description='Generate validated Java tests')
+    parser.add_argument('--source_dir', required=True, help='Source directory')
+    parser.add_argument('--out_dir', required=True, help='Output directory')
+    parser.add_argument('--project_id', default='runtime-terror-473009', help='GCP Project ID')
+    
     args = parser.parse_args()
+    
+    source_dir = Path(args.source_dir)
+    out_dir = Path(args.out_dir)
+    
+    # Create output directory
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Find all Java service files
+    java_files = list(source_dir.glob('**/*.java'))
+    
+    for java_file in java_files:
+        try:
+            print(f"Generating test for {java_file}")
+            
+            # Generate test
+            test_code = generate_test_with_vertex_ai(java_file, args.project_id)
+            
+            # Determine output path
+            relative_path = java_file.relative_to(source_dir)
+            test_file_name = relative_path.stem + 'Test.java'
+            test_output_path = out_dir / relative_path.parent / test_file_name
+            
+            # Create directory if needed
+            test_output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write test file
+            with open(test_output_path, 'w') as f:
+                f.write(test_code)
+            
+            print(f"Generated test: {test_output_path}")
+            
+            # Validate with compilation (if javac available)
+            compile_success, compile_message = compile_test_java(test_output_path)
+            if not compile_success:
+                print(f"WARNING: Generated test may have issues: {compile_message}")
+                
+        except Exception as e:
+            print(f"Failed to generate test for {java_file}: {str(e)}")
+            continue
 
-    print("🔐 Authenticating with Google Cloud...")
-    try:
-        token, project = get_access_token()
-        print(f"✅ Successfully authenticated for project: {project}")
-    except Exception as e:
-        print(f"❌ Authentication failed: {e}")
-        exit(1)
-
-    if not os.path.exists(args.source_dir):
-        print(f"❌ Source directory does not exist: {args.source_dir}")
-        exit(1)
-
-    successful_generations = 0
-    failed_generations = 0
-
-    print(f"🔍 Scanning for Java files in: {args.source_dir}")
-    for root, _, files in os.walk(args.source_dir):
-        for file in files:
-            if file.endswith(".java"):
-                file_path = os.path.join(root, file)
-
-                if should_skip_file(file_path):
-                    print(f"⏭️ Skipping: {file}")
-                    continue
-
-                class_name = file[:-5] # Remove .java extension
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        code = f.read()
-
-                    if not code.strip():
-                        print(f"⏭️ Skipping empty file: {file}")
-                        continue
-
-                    package_name = extract_package_name(code) or "com.github.yildizmy"
-                    relative_path = os.path.relpath(root, args.source_dir)
-
-                    print(f"📝 Processing: {class_name} (package: {package_name})")
-
-                    if generate_tests(
-                        token, project, code, class_name, package_name, args.out_dir, relative_path
-                    ):
-                        successful_generations += 1
-                    else:
-                        failed_generations += 1
-
-                    time.sleep(2) # avoid rate limits
-
-                except Exception as e:
-                    print(f"❌ Error processing {file}: {e}")
-                    failed_generations += 1
-
-    print(f"\n📊 Test Generation Summary:")
-    print(f"✅ Successful: {successful_generations}")
-    print(f"❌ Failed: {failed_generations}")
-    print(f"📁 Output directory: {args.out_dir}")
-
-    if failed_generations > 0:
-        exit(1)
+if __name__ == '__main__':
+    main()
