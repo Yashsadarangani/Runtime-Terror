@@ -8,7 +8,8 @@ steps:
     - |
       python -m venv /workspace/venv
       source /workspace/venv/bin/activate
-      pip install requests google-auth lxml
+      pip install --upgrade pip
+      pip install requests google-auth lxml google-cloud-aiplatform vertexai
 
 # 2) Generate AI tests
 - name: 'python:3.11'
@@ -25,7 +26,6 @@ steps:
         --source_dir=backend/src/main/java/com/github/yildizmy/service \
         --out_dir=backend/src/test/java
       
-
       echo "Validating generated test files..."
       find backend/src/test/java -name "*Test.java" -type f | while read file; do
         echo "Checking $file"
