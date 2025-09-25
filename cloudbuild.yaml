@@ -1,9 +1,5 @@
-substitutions:
-  _REPORT_DIR: 'target/site/jacoco'
-  _REPORTS_BUCKET_BASE: 'gs://runtime-terror-code/reports'
-
 steps:
-# 1) Create a virtual environment in /workspace and install dependencies into it
+# 1) Install Python dependencies
 - name: 'python:3.11'
   id: 'install-deps'
   entrypoint: 'bash'
@@ -12,11 +8,9 @@ steps:
     - |
       python -m venv /workspace/venv
       source /workspace/venv/bin/activate
-      python -m pip install --upgrade pip
-      pip install google-cloud-aiplatform
-      pip install pygithub
+      pip install requests google-auth lxml
 
-# 2) Activate the venv and run the test generation script
+# 2) Generate AI tests
 - name: 'python:3.11'
   id: 'generate-tests'
   entrypoint: 'bash'
@@ -26,26 +20,31 @@ steps:
     - '-c'
     - |
       source /workspace/venv/bin/activate
+      cd /workspace
       python tools/vertex_generate_tests.py \
-        --source_dir=src/main/java/backend \
-        --out_dir=src/test/java/backend_tests
+        --source_dir=backend/src/main/java/com/github/yildizmy \
+        --out_dir=backend/src/test/java
 
-# 3) Run Maven tests and generate Jacoco report
+# 3) Run Maven tests
 - name: 'gcr.io/cloud-builders/mvn'
   id: 'run-tests'
-  args: ['-B', 'clean', 'test', 'jacoco:report']
+  dir: 'backend'
+  args: 
+    - 'clean'
+    - 'test'
+    - 'jacoco:report'
 
-# 4) Upload Jacoco reports to GCS
+# 4) Upload reports to GCS
 - name: 'gcr.io/cloud-builders/gsutil'
-  id: 'upload-artifacts'
+  id: 'upload-reports'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
-      BUCKET=${_REPORTS_BUCKET_BASE}/${SHORT_SHA}
-      gsutil -m cp -r ${_REPORT_DIR} $$BUCKET/
+      gsutil -m cp -r backend/target gs://runtime-terror-code/reports/$SHORT_SHA/
+      gsutil -m cp -r backend/src/test/java gs://runtime-terror-code/reports/$SHORT_SHA/tests/
 
-# 5) Activate the venv and run the coverage check script
+# 5) Check coverage
 - name: 'python:3.11'
   id: 'check-coverage'
   entrypoint: 'bash'
@@ -53,14 +52,18 @@ steps:
     - '-c'
     - |
       source /workspace/venv/bin/activate
-      python tools/check_coverage.py ${_REPORT_DIR}/jacoco.xml 0.40 || { echo "Coverage gate failed"; exit 1; }
+      python tools/check_coverage.py backend/target/site/jacoco/jacoco.xml 0.40
 
-timeout: '1200s'
+timeout: '1800s'
 
 artifacts:
   objects:
     location: 'gs://runtime-terror-code/build-artifacts/${SHORT_SHA}/'
-    paths: ['target/','src/test/']
+    paths: 
+      - 'backend/target/**'
+      - 'backend/src/test/java/**'
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 10
