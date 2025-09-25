@@ -22,7 +22,7 @@ steps:
       source /workspace/venv/bin/activate
       cd /workspace
       python tools/vertex_generate_tests.py \
-        --source_dir=backend/src/main/java/com/github/yildizmy \
+        --source_dir=backend/src/main/java/com/github/yildizmy/service \
         --out_dir=backend/src/test/java
 
 # 3) Run Maven tests
