@@ -157,5 +157,5 @@ def main():
             print(f"Failed for {java_file}: {str(e)}")
 
 
-if _name_ == '_main_':
+if __name__ == '_main_':
     main()
