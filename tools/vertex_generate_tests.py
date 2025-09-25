@@ -472,4 +472,4 @@ if __name__ == "__main__":
         print(f"\n⚠️  {failed_generations} files failed generation. Check logs above for details.")
         exit(1)
     else:
-        print(f"\n🎉 All test generation completed successfully h!")
+        print(f"\n🎉 All test generation completed successfully!")
