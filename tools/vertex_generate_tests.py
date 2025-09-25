@@ -151,29 +151,6 @@ def compile_test_java(java_file_path):
     except Exception as e:
         return False, f"Compilation check failed: {str(e)}"
 
-def clean_generated_code(code_text):
-    """Clean the generated code by removing markdown formatting and extra text."""
-    # Remove markdown code blocks
-    code_text = re.sub(r'```java\n?', '', code_text)
-    code_text = re.sub(r'```\n?', '', code_text)
-    
-    # Remove any introductory text before the first import or package statement
-    lines = code_text.split('\n')
-    start_idx = 0
-    
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith('package ') or stripped.startswith('import ') or stripped.startswith('@') or stripped.startswith('public class'):
-            start_idx = i
-            break
-    
-    return '\n'.join(lines[start_idx:]).strip()
-
-def extract_package_name(source_code):
-    """Extract package name from source code."""
-    match = re.search(r'package\s+([\w\.]+);', source_code)
-    return match.group(1) if match else ""
-
 def validate_and_fix_generated_code(generated_code, class_name, max_attempts=3):
     """Validate and fix generated test code with multiple attempts"""
     
@@ -226,13 +203,64 @@ Source code:
 Generate the complete test class with proper structure and balanced braces.
 """
 
+def analyze_source_file(file_path):
+    """Analyze source file to extract metadata"""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            code = f.read()
+        
+        # Skip empty files
+        if not code.strip():
+            return None, "Empty file"
+        
+        package_name = extract_package_name(code)
+        if not package_name:
+            print(f"⚠️  No package found in {file_path}, using default")
+            package_name = "com.github.yildizmy"
+        
+        # Check if it's a valid Java class
+        if not re.search(r'(class|interface|enum)\s+\w+', code):
+            return None, "No class/interface/enum found"
+        
+        return {
+            'code': code,
+            'package': package_name
+        }, None
+        
+    except Exception as e:
+        return None, f"Error reading file: {e}"
+
+def clean_generated_code(code_text):
+    """Clean the generated code by removing markdown formatting and extra text."""
+    # Remove markdown code blocks
+    code_text = re.sub(r'```java\n?', '', code_text)
+    code_text = re.sub(r'```\n?', '', code_text)
+    
+    # Remove any introductory text before the first import or package statement
+    lines = code_text.split('\n')
+    start_idx = 0
+    
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('package ') or stripped.startswith('import ') or stripped.startswith('@') or stripped.startswith('public class'):
+            start_idx = i
+            break
+    
+    return '\n'.join(lines[start_idx:]).strip()
+
+def extract_package_name(source_code):
+    """Extract package name from source code."""
+    match = re.search(r'package\s+([\w\.]+);', source_code)
+    return match.group(1) if match else ""
+
 def generate_tests(access_token: str, project_id: str, source_code: str, class_name: str, package_name: str, out_dir: str, relative_path: str):
-    """Generates tests by calling the Vertex AI REST API with validation."""
+    """Generates tests by calling the Vertex AI REST API."""
     
     # Updated with current available models
     models_to_try = [
-        "gemini-2.5-flash",
-        "gemini-2.5-pro", 
+        "claude-sonnet-4@20250514",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash", 
         "gemini-2.0-flash-001",
         "gemini-2.0-flash-lite-001"
     ]
@@ -243,22 +271,17 @@ def generate_tests(access_token: str, project_id: str, source_code: str, class_n
             f"/locations/{LOCATION}/publishers/google/models/{model_id}:generateContent"
         )
         
-        success = try_generate_with_model(
-            api_endpoint, access_token, source_code, class_name, 
-            package_name, out_dir, model_id
-        )
-        
-        if success:
-            print(f"✅ Successfully generated tests using model: {model_id}")
+        if try_generate_with_model(api_endpoint, access_token, source_code, class_name, package_name, out_dir, model_id):
+            print(f"✅ Successfully used model: {model_id}")
             return True
     
     print(f"❌ All models failed for {class_name}")
     return False
 
-def try_generate_with_model(api_endpoint: str, access_token: str, source_code: str, 
-                           class_name: str, package_name: str, out_dir: str, model_id: str):
+def try_generate_with_model(api_endpoint: str, access_token: str, source_code: str, class_name: str, package_name: str, out_dir: str, model_id: str = ""):
     """Try to generate tests using a specific model endpoint with validation."""
     
+    # Use enhanced prompt for better results
     prompt = create_enhanced_prompt(source_code, class_name, package_name)
     
     request_body = {
@@ -269,7 +292,7 @@ def try_generate_with_model(api_endpoint: str, access_token: str, source_code: s
         "generationConfig": {
             "temperature": 0.1,  # Lower temperature for more consistent code
             "topP": 0.8,
-            "maxOutputTokens": 56024
+            "maxOutputTokens": 64000
         }
     }
 
@@ -283,7 +306,7 @@ def try_generate_with_model(api_endpoint: str, access_token: str, source_code: s
         
         # Enhanced error handling
         if response.status_code == 404:
-            print(f"⚠️  Model not found: {model_id}")
+            print(f"⚠️  Model not found or not accessible: {model_id}")
             return False
         elif response.status_code == 403:
             print(f"⚠️  Permission denied for model: {model_id}")
@@ -298,7 +321,7 @@ def try_generate_with_model(api_endpoint: str, access_token: str, source_code: s
         response_json = response.json()
         
         if 'candidates' not in response_json or not response_json['candidates']:
-            print(f"⚠️  No candidates returned from model {model_id}")
+            print(f"⚠️  No candidates returned from model")
             return False
         
         generated_code = response_json['candidates'][0]['content']['parts'][0]['text']
@@ -358,33 +381,6 @@ def should_skip_file(file_path):
     filename = os.path.basename(file_path)
     return any(pattern in filename for pattern in skip_patterns)
 
-def analyze_source_file(file_path):
-    """Analyze source file to extract metadata"""
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            code = f.read()
-        
-        # Skip empty files
-        if not code.strip():
-            return None, "Empty file"
-        
-        package_name = extract_package_name(code)
-        if not package_name:
-            print(f"⚠️  No package found in {file_path}, using default")
-            package_name = "com.github.yildizmy"
-        
-        # Check if it's a valid Java class
-        if not re.search(r'(class|interface|enum)\s+\w+', code):
-            return None, "No class/interface/enum found"
-        
-        return {
-            'code': code,
-            'package': package_name
-        }, None
-        
-    except Exception as e:
-        return None, f"Error reading file: {e}"
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate JUnit tests using Vertex AI with validation")
     parser.add_argument("--source_dir", 
@@ -430,7 +426,7 @@ if __name__ == "__main__":
                 
                 class_name = file[:-5]  # Remove .java extension
                 
-                # Analyze source file
+                # Use enhanced file analysis
                 analysis_result, error = analyze_source_file(file_path)
                 if error:
                     print(f"⏭️  Skipping {file}: {error}")
