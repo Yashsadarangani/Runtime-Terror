@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 
 # --- Configuration ---
-MODEL_ID = "gemini-pro"
 LOCATION = "us-central1"
 
 def get_access_token():
@@ -54,11 +53,10 @@ def generate_tests(access_token: str, project_id: str, source_code: str, class_n
     
     # Updated with current available models
     models_to_try = [
-        "claude-sonnet-4@20250514",
         "gemini-2.5-pro",
-        "gemini-2.5-flash", 
-        "gemini-2.0-flash-001",
-        "gemini-2.0-flash-lite-001"
+        "qwen2.5",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash-001"
     ]
     
     for model_id in models_to_try:

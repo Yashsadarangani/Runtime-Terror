@@ -61,7 +61,7 @@ build/
 
 ### VS Code ###
 frontend/.vscode/
-
+.vscode/
 # dependencies
 frontend/node_modules
 frontend/.pnp
