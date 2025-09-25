@@ -178,7 +178,7 @@ def should_skip_file(file_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate JUnit tests using Vertex AI")
     parser.add_argument("--source_dir", 
-                       default="backend/src/main/java/com/github/yildizmy", 
+                       default="backend/src/main/java/com/github/yildizmy/service", 
                        help="Directory with source .java files")
     parser.add_argument("--out_dir", 
                        default="backend/src/test/java", 

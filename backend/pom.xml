@@ -155,26 +155,6 @@
         </executions>
       </plugin>
 
-      <!-- EvoSuite Plugin for Automated Test Generation -->
-      <plugin>
-        <groupId>org.evosuite.plugins</groupId>
-        <artifactId>maven-evosuite-plugin</artifactId>
-        <version>${evosuite.version}</version>
-        <executions>
-          <execution>
-            <id>generate-tests</id>
-            <phase>generate-test-sources</phase>
-            <goals>
-              <goal>generate</goal>
-            </goals>
-            <configuration>
-              <targetClasses>com.github.yildizmy.*</targetClasses>
-              <testDir>${project.build.directory}/generated-test-sources/evosuite</testDir>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-
     </plugins>
   </build>
 </project>
